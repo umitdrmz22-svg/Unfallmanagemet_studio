@@ -1,0 +1,27 @@
+name: Regeltests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax prüfen
+        run: |
+          node --check src/app.js
+          node --check src/rules.js
+          node --check src/storage.js
+      - name: Regeltests ausführen
+        run: node tests/rules.test.mjs
