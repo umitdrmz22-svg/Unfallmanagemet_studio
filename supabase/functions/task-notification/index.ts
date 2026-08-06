@@ -28,23 +28,51 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const authHeader = req.headers.get("Authorization") || "";
-  const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } });
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false }
+  });
   const { data: userData, error: userError } = await userClient.auth.getUser();
-  if (userError || !userData.user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  if (userError || !userData.user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
-  const { type, actionId } = await req.json();
-  if (!["extension", "escalation"].includes(type) || !actionId) return new Response(JSON.stringify({ error: "Ungültige Anfrage" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  const { type, actionId, organizationId } = await req.json();
+  if (!["extension", "escalation"].includes(type) || !actionId || !organizationId) {
+    return new Response(JSON.stringify({ error: "Ungültige Anfrage" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // Die RLS-Abfrage bestätigt, dass die anfragende Person Mitglied der Organisation ist
+  // und die Maßnahme tatsächlich in ihrem Firmenbereich lesen darf.
+  const { data: authorizedAction, error: authorizationError } = await userClient
+    .from("actions")
+    .select("id,organization_id")
+    .eq("id", actionId)
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (authorizationError || !authorizedAction) {
+    return new Response(JSON.stringify({ error: "Keine Berechtigung" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
   const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  const { data: action, error } = await db.from("actions").select("*, incidents(case_number, department)").eq("id", actionId).single();
-  if (error || !action) return new Response(JSON.stringify({ error: "Maßnahme nicht gefunden" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  if (!action.manager_email) return new Response(JSON.stringify({ error: "Keine E-Mail-Adresse der Führungskraft hinterlegt" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  const { data: action, error } = await db
+    .from("actions")
+    .select("*, incidents(case_number, department)")
+    .eq("id", actionId)
+    .eq("organization_id", organizationId)
+    .single();
+  if (error || !action) {
+    return new Response(JSON.stringify({ error: "Maßnahme nicht gefunden" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+  if (!action.manager_email) {
+    return new Response(JSON.stringify({ error: "Keine E-Mail-Adresse der Führungskraft hinterlegt" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
   const resendKey = Deno.env.get("RESEND_API_KEY")!;
   const mailFrom = Deno.env.get("MAIL_FROM") || "Unfallmanagement <noreply@example.com>";
   const appUrl = Deno.env.get("APP_URL") || "";
   const isEscalation = type === "escalation";
-  const subject = isEscalation ? `[Unfallmanagement] Überfällige Maßnahme eskaliert` : `[Unfallmanagement] Fristverlängerung beantragt`;
+  const subject = isEscalation ? "[Unfallmanagement] Überfällige Maßnahme eskaliert" : "[Unfallmanagement] Fristverlängerung beantragt";
   const html = `<div style="font-family:Arial,sans-serif;color:#132b31;max-width:700px;margin:auto">
     <h2>${isEscalation ? "Überfällige Maßnahme" : "Antrag auf Fristverlängerung"}</h2>
     <p><strong>Maßnahme:</strong> ${escapeHtml(action.title)}</p>
@@ -57,12 +85,33 @@ Deno.serve(async (req) => {
   </div>`;
 
   try {
-    const sent = await sendMail(resendKey, mailFrom, { to: [action.manager_email], cc: [action.responsible_email], subject, html });
-    await db.from("email_logs").insert({ message_type: type, recipient: action.manager_email, cc: action.responsible_email, action_id: action.id, provider_message_id: sent.id || null, delivery_status: "sent" });
+    const sent = await sendMail(resendKey, mailFrom, {
+      to: [action.manager_email],
+      cc: [action.responsible_email],
+      subject,
+      html
+    });
+    await db.from("email_logs").insert({
+      organization_id: action.organization_id,
+      message_type: type,
+      recipient: action.manager_email,
+      cc: action.responsible_email,
+      action_id: action.id,
+      provider_message_id: sent.id || null,
+      delivery_status: "sent"
+    });
     return new Response(JSON.stringify({ sent: true, id: sent.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (mailError) {
     const message = mailError instanceof Error ? mailError.message : String(mailError);
-    await db.from("email_logs").insert({ message_type: type, recipient: action.manager_email, cc: action.responsible_email, action_id: action.id, delivery_status: "failed", error_message: message });
+    await db.from("email_logs").insert({
+      organization_id: action.organization_id,
+      message_type: type,
+      recipient: action.manager_email,
+      cc: action.responsible_email,
+      action_id: action.id,
+      delivery_status: "failed",
+      error_message: message
+    });
     return new Response(JSON.stringify({ error: message }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
