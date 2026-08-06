@@ -49,16 +49,20 @@ Deno.serve(async (req) => {
   const { data: rows, error } = await db.from("open_action_reminders").select("*").order("effective_due_date", { ascending: true });
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+  // Gleiche E-Mail-Adressen in verschiedenen Unternehmen werden strikt getrennt verarbeitet.
   const grouped = new Map<string, any[]>();
   for (const row of rows || []) {
-    if (!row.responsible_email) continue;
-    const list = grouped.get(row.responsible_email) || [];
+    if (!row.responsible_email || !row.organization_id) continue;
+    const key = `${row.organization_id}::${row.responsible_email.toLowerCase()}`;
+    const list = grouped.get(key) || [];
     list.push(row);
-    grouped.set(row.responsible_email, list);
+    grouped.set(key, list);
   }
 
   const results: any[] = [];
-  for (const [recipient, actions] of grouped.entries()) {
+  for (const actions of grouped.values()) {
+    const recipient = actions[0].responsible_email;
+    const organizationId = actions[0].organization_id;
     const overdueCount = actions.filter((a) => a.is_overdue).length;
     const subject = overdueCount
       ? `[Unfallmanagement] ${overdueCount} überfällige und ${actions.length} offene Maßnahme(n)`
@@ -79,18 +83,33 @@ Deno.serve(async (req) => {
         <table style="border-collapse:collapse;width:100%;margin:20px 0"><thead><tr style="background:#edf3f4"><th style="text-align:left;padding:10px">Maßnahme</th><th style="text-align:left;padding:10px">Frist</th><th style="text-align:left;padding:10px">Status</th></tr></thead><tbody>${rowsHtml}</tbody></table>
         ${overdueCount ? `<p style="background:#fde8e7;padding:12px;border-radius:8px"><strong>${overdueCount} Maßnahme(n) sind überfällig.</strong> Bitte erledigen, eine Fristverlängerung begründet beantragen oder die Führungskraft über die Anwendung informieren.</p>` : ""}
         ${appUrl ? `<p><a href="${escapeHtml(appUrl)}" style="background:#0b5968;color:white;padding:11px 16px;text-decoration:none;border-radius:8px;display:inline-block">Maßnahmenmanagement öffnen</a></p>` : ""}
-        <p style="font-size:12px;color:#63777d">Automatische Nachricht aus dem Unfallmanagement Studio. Bitte nicht mit Gesundheitsdaten per E-Mail antworten.</p>
+        <p style="font-size:12px;color:#63777d">Automatische Nachricht aus dem Unfall- und Maßnahmenmanagement. Bitte nicht mit Gesundheitsdaten per E-Mail antworten.</p>
       </div>`;
 
     try {
       const sent = await sendMail(resendKey, mailFrom, { to: [recipient], subject, html });
-      results.push({ recipient, status: "sent", id: sent.id, count: actions.length });
-      await db.from("email_logs").insert({ message_type: "weekly_reminder", recipient, provider_message_id: sent.id || null, delivery_status: "sent" });
-      await db.from("actions").update({ last_weekly_reminder_at: new Date().toISOString() }).in("id", actions.map((a) => a.id));
+      results.push({ organizationId, recipient, status: "sent", id: sent.id, count: actions.length });
+      await db.from("email_logs").insert({
+        organization_id: organizationId,
+        message_type: "weekly_reminder",
+        recipient,
+        provider_message_id: sent.id || null,
+        delivery_status: "sent"
+      });
+      await db.from("actions")
+        .update({ last_weekly_reminder_at: new Date().toISOString() })
+        .eq("organization_id", organizationId)
+        .in("id", actions.map((a) => a.id));
     } catch (mailError) {
       const message = mailError instanceof Error ? mailError.message : String(mailError);
-      results.push({ recipient, status: "failed", error: message });
-      await db.from("email_logs").insert({ message_type: "weekly_reminder", recipient, delivery_status: "failed", error_message: message });
+      results.push({ organizationId, recipient, status: "failed", error: message });
+      await db.from("email_logs").insert({
+        organization_id: organizationId,
+        message_type: "weekly_reminder",
+        recipient,
+        delivery_status: "failed",
+        error_message: message
+      });
     }
   }
 
