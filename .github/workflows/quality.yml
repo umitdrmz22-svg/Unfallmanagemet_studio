@@ -1,0 +1,20 @@
+name: Qualitätsprüfung
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: JavaScript-Syntax prüfen
+        run: |
+          node --check config.js
+          for file in src/bootstrap.js src/app.js src/storage.js src/rules.js; do
+            node --input-type=module --check < "$file"
+          done
