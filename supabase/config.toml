@@ -1,0 +1,7 @@
+project_id = "unfallmanagement-studio"
+
+[functions.weekly-reminders]
+verify_jwt = false
+
+[functions.task-notification]
+verify_jwt = true

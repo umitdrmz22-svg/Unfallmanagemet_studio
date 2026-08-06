@@ -1,0 +1,29 @@
+name: Wöchentliche Maßnahmen-Erinnerungen
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Erinnerungsfunktion aufrufen
+        env:
+          FUNCTION_URL: ${{ secrets.WEEKLY_REMINDER_FUNCTION_URL }}
+          JOB_TOKEN: ${{ secrets.WEEKLY_JOB_TOKEN }}
+        run: |
+          if [ -z "$FUNCTION_URL" ] || [ -z "$JOB_TOKEN" ]; then
+            echo "Erforderliche Repository-Secrets fehlen."
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "x-job-token: $JOB_TOKEN" \
+            --data '{"source":"github-actions"}' \
+            "$FUNCTION_URL"
