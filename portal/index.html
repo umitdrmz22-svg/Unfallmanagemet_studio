@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Zentrales EHS Management Studio für Gefahrstoffe, Dokumente, Betriebsanweisungen, Brandschutz, Fluchtpläne sowie Unfall- und Maßnahmenmanagement.">
+  <title>EHS Management Studio</title>
+  <link rel="stylesheet" href="./portal.css?v=1">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="./"><span class="brand-mark">E</span><span><strong>EHS</strong><small>Management Studio</small></span></a>
+      <div class="org-box">
+        <span>ORGANISATION</span>
+        <strong id="orgName">Wird geladen …</strong>
+        <small id="userLabel">—</small>
+      </div>
+      <nav>
+        <button class="nav active" data-section="dashboard"><span>⌂</span> Dashboard</button>
+        <button class="nav" data-section="modules"><span>▦</span> Anwendungen</button>
+        <button class="nav" data-section="tasks"><span>✓</span> Offene Punkte</button>
+      </nav>
+      <div class="side-footer">
+        <div><span class="dot"></span><span id="connectionText">Verbindung wird geprüft</span></div>
+        <button id="logoutButton" class="text-button hidden" type="button">Abmelden</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">ZENTRALE ARBEITSOBERFLÄCHE</p>
+          <h1 id="pageTitle">Dashboard</h1>
+        </div>
+        <div class="top-actions">
+          <span id="todayLabel" class="date-chip"></span>
+          <button id="refreshButton" class="secondary" type="button">↻ Aktualisieren</button>
+        </div>
+      </header>
+
+      <section id="loginGate" class="login-gate hidden">
+        <div class="login-card">
+          <div class="login-mark">EHS</div>
+          <p class="eyebrow">GESCHÜTZTER FIRMENBEREICH</p>
+          <h2>Anmelden</h2>
+          <p>Mit demselben Benutzerkonto anmelden, das auch in den EHS-Anwendungen verwendet wird.</p>
+          <form id="loginForm">
+            <label>E-Mail<input id="email" type="email" autocomplete="email" required></label>
+            <label>Passwort<input id="password" type="password" autocomplete="current-password" required></label>
+            <p id="loginMessage" class="message"></p>
+            <button class="primary wide" type="submit">Anmelden</button>
+          </form>
+        </div>
+      </section>
+
+      <div id="portalContent" class="hidden">
+        <section id="dashboardSection" class="view-section">
+          <div class="hero">
+            <div>
+              <p class="eyebrow">ÜBERBLICK</p>
+              <h2>EHS auf einen Blick</h2>
+              <p>Aktuelle Arbeitsstände aus den verbundenen EHS-Modulen. Die Kennzahlen werden direkt aus dem gemeinsamen Firmenbereich geladen.</p>
+            </div>
+            <div class="hero-status"><span class="pulse"></span><div><small>SYSTEMSTATUS</small><strong>Produktiv verbunden</strong></div></div>
+          </div>
+
+          <div class="kpi-grid">
+            <article class="kpi"><div class="kpi-icon">GS</div><div><span>Gefahrstoffe</span><strong id="kpiSubstances">—</strong><small id="kpiSdsDue">SDB-Prüfung wird geladen</small></div></article>
+            <article class="kpi"><div class="kpi-icon">DO</div><div><span>Gelenkte Dokumente</span><strong id="kpiDocuments">—</strong><small id="kpiDocsDue">Wiedervorlage wird geladen</small></div></article>
+            <article class="kpi"><div class="kpi-icon">BA</div><div><span>Betriebsanweisungen</span><strong id="kpiBa">—</strong><small>Online gespeichert</small></div></article>
+            <article class="kpi"><div class="kpi-icon">M</div><div><span>Offene Maßnahmen</span><strong id="kpiActions">—</strong><small id="kpiActionsOverdue">Fälligkeit wird geladen</small></div></article>
+          </div>
+
+          <div class="dashboard-grid">
+            <section class="panel modules-panel">
+              <div class="panel-head"><div><p class="eyebrow">ANWENDUNGEN</p><h3>Schnellzugriff</h3></div><button class="link-button" data-go-modules>Alle anzeigen →</button></div>
+              <div id="quickModules" class="quick-modules"></div>
+            </section>
+            <section class="panel attention-panel">
+              <div class="panel-head"><div><p class="eyebrow">HANDLUNGSBEDARF</p><h3>Offene Punkte</h3></div><button class="link-button" data-go-tasks>Details →</button></div>
+              <div id="attentionList" class="attention-list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="modulesSection" class="view-section hidden">
+          <div class="section-intro"><p class="eyebrow">EHS-WERKZEUGE</p><h2>Anwendungen</h2><p>Alle produktiv verbundenen Module des EHS Management Studio.</p></div>
+          <div id="moduleGrid" class="module-grid"></div>
+        </section>
+
+        <section id="tasksSection" class="view-section hidden">
+          <div class="section-intro"><p class="eyebrow">PRIORITÄTEN</p><h2>Offene Punkte</h2><p>Überfällige oder prüfungsbedürftige Einträge aus den verbundenen Modulen.</p></div>
+          <div id="taskGrid" class="task-grid"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./portal.js?v=1"></script>
+</body>
+</html>
