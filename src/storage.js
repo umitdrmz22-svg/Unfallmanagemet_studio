@@ -68,15 +68,23 @@ export class DataStore{
     return this;
   }
 
+  async waitForEhsAccess(){
+    if(globalThis.DefiDevEHSAccess)return globalThis.DefiDevEHSAccess;
+    if(typeof document==='undefined'||!document.querySelector('script[src*="ehs-entitlement-gate.js"]'))return null;
+    return await new Promise(resolve=>globalThis.addEventListener('defidev-ehs-entitlement-ready',event=>resolve(globalThis.DefiDevEHSAccess||event.detail||null),{once:true}));
+  }
+
   async loadProfile(){
     if(!this.client||!this.user)return null;
-    const {data:membership,error:membershipError}=await this.client
+    const ehsAccess=await this.waitForEhsAccess();
+    let membershipQuery=this.client
       .from('organization_members')
       .select('organization_id,role,status,organizations(name)')
       .eq('user_id',this.user.id)
-      .eq('status','active')
-      .limit(1)
-      .maybeSingle();
+      .eq('status','active');
+    if(ehsAccess?.organizationId)membershipQuery=membershipQuery.eq('organization_id',ehsAccess.organizationId);
+    else membershipQuery=membershipQuery.limit(1);
+    const {data:membership,error:membershipError}=await membershipQuery.maybeSingle();
     if(membershipError)throw membershipError;
     this.membership=membership||null;
     this.organizationId=membership?.organization_id||null;
