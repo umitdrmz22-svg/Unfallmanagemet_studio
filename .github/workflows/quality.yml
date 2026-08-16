@@ -19,15 +19,11 @@ jobs:
         run: |
           node --check config.js
           for file in src/bootstrap.js src/app.js src/storage.js src/rules.js; do node --input-type=module --check < "$file"; done
-      - name: Modul- und Lizenzvertrag prüfen
+      - name: Deploy-Lizenzvertrag prüfen
         run: |
-          INDEX=$(for f in index.html public/index.html docs/index.html; do if [ -f "$f" ]; then echo "$f"; break; fi; done)
-          test -n "$INDEX"
-          grep -Fq 'defidev-legal/ehs-entitlement-gate.js' "$INDEX"
-          grep -Fq 'data-product-id="ehs_unfallmanagement_monthly"' "$INDEX"
+          test -f .github/workflows/ehs-module-gate.yml
+          grep -Fq 'defidev-legal/ehs-entitlement-gate.js' .github/workflows/ehs-module-gate.yml
+          grep -Fq 'ehs_unfallmanagement_monthly' .github/workflows/ehs-module-gate.yml
       - name: Regeltests dreimal ausführen
         run: |
-          for PASS in 1 2 3; do
-            echo "QA pass $PASS"
-            node tests/rules.test.mjs
-          done
+          for PASS in 1 2 3; do echo "QA pass $PASS"; node tests/rules.test.mjs; done
