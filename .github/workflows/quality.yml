@@ -19,8 +19,12 @@ jobs:
         run: |
           node --check config.js
           for file in src/bootstrap.js src/app.js src/storage.js src/rules.js; do node --input-type=module --check < "$file"; done
-      - name: Deploy-Lizenzvertrag prüfen
+      - name: Werk- und Lizenzisolierung prüfen
         run: |
+          grep -Fq 'origin_werk_id:this.originWerkId' src/storage.js
+          grep -Fq ".eq('origin_werk_id',this.originWerkId)" src/storage.js
+          grep -Fq "in('incident_id',incidentIds)" src/storage.js
+          grep -Fq 'selectedWerk' src/storage.js
           test -f .github/workflows/ehs-module-gate.yml
           grep -Fq 'defidev-legal/ehs-entitlement-gate.js' .github/workflows/ehs-module-gate.yml
           grep -Fq 'ehs_unfallmanagement_monthly' .github/workflows/ehs-module-gate.yml
