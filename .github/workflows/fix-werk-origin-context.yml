@@ -1,0 +1,111 @@
+name: Fix Werk origin context
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-werk-origin-context.yml']
+  workflow_dispatch: {}
+permissions: {contents: write}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Patch storage layer
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/storage.js'); s=p.read_text()
+          if 'this.originWerkId=null;' not in s:
+              s=s.replace('    this.organizationId=null;\n','    this.organizationId=null;\n    this.originWerkId=null;\n',1)
+          old="""    const ehsAccess=await this.waitForEhsAccess();
+    let membershipQuery=this.client"""
+          new="""    const ehsAccess=await this.waitForEhsAccess();
+    const selectedWerk=ehsAccess?.selectedWerk || (Array.isArray(ehsAccess?.works)&&ehsAccess.works.length===1?ehsAccess.works[0]:null);
+    this.originWerkId=String(selectedWerk?.id||'')||null;
+    if(!this.originWerkId)throw new Error('Bitte Unfallmanagement über das EHS-Dashboard öffnen und ein Werk auswählen.');
+    let membershipQuery=this.client"""
+          if new not in s:
+              assert old in s, 'profile anchor missing'; s=s.replace(old,new,1)
+          s=s.replace('    this.organizationId=null;\n  }\n\n  requireOrganization()', '    this.organizationId=null;\n    this.originWerkId=null;\n  }\n\n  requireOrganization()',1)
+          old="""      .eq('organization_id',this.organizationId)
+      .order('created_at',{ascending:false});"""
+          new="""      .eq('organization_id',this.organizationId)
+      .eq('origin_werk_id',this.originWerkId)
+      .order('created_at',{ascending:false});"""
+          if new not in s:
+              assert old in s, 'incident list anchor missing'; s=s.replace(old,new,1)
+          old="""      .eq('organization_id',this.organizationId)
+      .eq('id',id)
+      .single();"""
+          new="""      .eq('organization_id',this.organizationId)
+      .eq('origin_werk_id',this.originWerkId)
+      .eq('id',id)
+      .single();"""
+          if new not in s:
+              assert old in s, 'incident get anchor missing'; s=s.replace(old,new,1)
+          old="""        id:incident.id,
+        ...payload,
+        created_by:this.user.id"""
+          new="""        id:incident.id,
+        ...payload,
+        origin_werk_id:this.originWerkId,
+        created_by:this.user.id"""
+          if new not in s:
+              assert old in s, 'incident insert anchor missing'; s=s.replace(old,new,1)
+          old="""      query=this.client.from('incidents').update(payload)
+        .eq('organization_id',this.organizationId).eq('id',incident.id);"""
+          new="""      query=this.client.from('incidents').update(payload)
+        .eq('organization_id',this.organizationId).eq('origin_werk_id',this.originWerkId).eq('id',incident.id);"""
+          if new not in s:
+              assert old in s, 'incident update anchor missing'; s=s.replace(old,new,1)
+          old="""    const {error}=await this.client.from('incidents').delete()
+      .eq('organization_id',this.organizationId).eq('id',id);"""
+          new="""    const {error}=await this.client.from('incidents').delete()
+      .eq('organization_id',this.organizationId).eq('origin_werk_id',this.originWerkId).eq('id',id);"""
+          if new not in s:
+              assert old in s, 'incident delete anchor missing'; s=s.replace(old,new,1)
+          old="""  async listActions(){
+    this.requireOrganization();
+    const {data,error}=await this.client
+      .from('actions')
+      .select('*')
+      .eq('organization_id',this.organizationId)
+      .order('due_date',{ascending:true});"""
+          new="""  async listActions(){
+    this.requireOrganization();
+    const incidents=await this.listIncidents();
+    const incidentIds=incidents.map(item=>item.id);
+    if(!incidentIds.length)return [];
+    const {data,error}=await this.client
+      .from('actions')
+      .select('*')
+      .eq('organization_id',this.organizationId)
+      .in('incident_id',incidentIds)
+      .order('due_date',{ascending:true});"""
+          if new not in s:
+              assert old in s, 'actions list anchor missing'; s=s.replace(old,new,1)
+          old="""  async saveAction(action){
+    this.requireOrganization();
+    const payload={"""
+          new="""  async saveAction(action){
+    this.requireOrganization();
+    if(!action.incidentId)throw new Error('Eine Maßnahme muss einem Unfall / Ereignis zugeordnet sein.');
+    await this.getIncident(action.incidentId);
+    const payload={"""
+          if new not in s:
+              assert old in s, 'saveAction anchor missing'; s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          node --check src/storage.js
+          grep -q 'origin_werk_id:this.originWerkId' src/storage.js
+          grep -q "in('incident_id',incidentIds)" src/storage.js
+      - name: Tests x3
+        run: for i in 1 2 3; do npm test; done
+      - name: Commit
+        run: |
+          git config user.name 'DefiDev Automation'; git config user.email 'actions@users.noreply.github.com'
+          git add src/storage.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Scope Unfallmanagement to selected Werk'
+          git push
